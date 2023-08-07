@@ -4,7 +4,7 @@ Test the module dynamic_versioning.commands
 
 
 # third parties libraries
-from distutils.cmd import Command
+from setuptools import Command
 
 # testing libraries
 import pytest

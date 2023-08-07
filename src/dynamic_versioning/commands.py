@@ -1,5 +1,5 @@
 '''
-This module provides the extension to the distutils install command class.
+This module provides the extension to the setuptools install command class.
 '''
 
 
@@ -7,10 +7,10 @@ This module provides the extension to the distutils install command class.
 import logging
 
 # third parties libraries
-from distutils.command.bdist import bdist
-from distutils.command.build import build
-from distutils.command.install import install
-from distutils.command.sdist import sdist
+from setuptools.command.bdist_egg import bdist_egg
+from setuptools.command.build_py import build_py
+from setuptools.command.install import install
+from setuptools.command.sdist import sdist
 from wheel.bdist_wheel import bdist_wheel
 
 # local libraries
@@ -20,7 +20,7 @@ from . import utils
 # pylint: disable=no-member, attribute-defined-outside-init
 class DynamicVersionBase:
     '''
-    The base class that holds the overrides to distutils initialization and run
+    The base class that holds the overrides to setuptools initialization and run
     methods.
     '''
     def initialize_options(self):
@@ -41,6 +41,7 @@ class DynamicVersionBase:
         self.new_version = None
         self.version_bump = None
         self.dev_version = None
+
 
     def run(self):
         '''
@@ -89,20 +90,20 @@ class DynamicVersionBase:
 # pylint: enable=no-member, attribute-defined-outside-init
 
 
-class DynamicVersionBDist(DynamicVersionBase, bdist):
+class DynamicVersionBDist(DynamicVersionBase, bdist_egg):
     '''
-    Custom "bdist" command subclass which accepts optional arguments.
+    Custom "bdist_egg" command subclass which accepts optional arguments.
     '''
-    user_options = bdist.user_options + utils.VERSIONING_OPTIONS
-    boolean_options = bdist.boolean_options + utils.BOOLEAN_OPTIONS
+    user_options = bdist_egg.user_options + utils.VERSIONING_OPTIONS
+    boolean_options = bdist_egg.boolean_options + utils.BOOLEAN_OPTIONS
 
 
-class DynamicVersionBuild(DynamicVersionBase, build):
+class DynamicVersionBuild(DynamicVersionBase, build_py):
     '''
     Custom "build" command subclass which accepts optional arguments.
     '''
-    user_options = build.user_options + utils.VERSIONING_OPTIONS
-    boolean_options = build.boolean_options + utils.BOOLEAN_OPTIONS
+    user_options = build_py.user_options + utils.VERSIONING_OPTIONS
+    boolean_options = build_py.boolean_options + utils.BOOLEAN_OPTIONS
 
 
 class DynamicVersionInstall(DynamicVersionBase, install):

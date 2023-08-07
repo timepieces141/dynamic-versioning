@@ -7,7 +7,7 @@ values.
 
 # core libraries
 import os
-from pathlib import Path
+import pathlib
 import inspect
 
 
@@ -44,7 +44,18 @@ def _discover_top_level_package(project_dir):
                 return root
 
     raise SystemExit("There does not appear to be a top-level package (containing an __init__.py file) in this or any "
-        "sub-directory.")
+                     "sub-directory.")
+
+
+def _find_setup_file():
+    '''
+    Seek out the setup file and return it as a Path.
+    '''
+    for frame in inspect.stack():
+        if pathlib.Path(frame.filename).name == "setup.py":
+            return pathlib.Path(frame.filename).expanduser().resolve()
+
+    raise SystemExit("Unable to find the setup.py file!")
 
 
 def configure(top_level_pkg=None, version_file_name=None, version_docstring_format=None):
@@ -54,19 +65,17 @@ def configure(top_level_pkg=None, version_file_name=None, version_docstring_form
     '''
     # if top-level directory is given populate that
     if top_level_pkg is not None:
-        top_level_package = Path(top_level_pkg).expanduser().resolve()
+        top_level_package = pathlib.Path(top_level_pkg).expanduser().resolve()
 
-    # otherwise, get the directory of the file that called this function
-    # (presumably setup.py) and search for the top level directory from there
+    # otherwise, discover the top-level directory from the location of the
+    # setup.py file
     else:
-        frame = inspect.stack()[1]
-        module = inspect.getmodule(frame[0])
-        project_dir = module.__file__
-        top_level_package = _discover_top_level_package(project_dir)
+        top_level_package = _discover_top_level_package(_find_setup_file().parent)
 
     # assemble the version file
-    __configuration__["version_path"] = str(Path(os.path.join(top_level_package, version_file_name or "version.py")) \
-                                            .expanduser().resolve())
+    __configuration__["version_path"] = str(
+        (pathlib.Path(top_level_package) / (version_file_name or "version.py")).expanduser().resolve()
+    )
 
     # if docstring provided, save it off
     if version_docstring_format is not None:

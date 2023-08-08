@@ -12,9 +12,9 @@ jobs:
       - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:
-          path: tests/htmlcov
-          path: tests/coverage.log
-          path: tests/pylint.log
+          - path: tests/htmlcov
+          - path: tests/coverage.log
+          - path: tests/pylint.log
 
   test-python311:
     docker:
@@ -26,6 +26,13 @@ jobs:
       - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:
-          path: tests/htmlcov
-          path: tests/coverage.log
-          path: tests/pylint.log
+          - path: tests/htmlcov
+          - path: tests/coverage.log
+          - path: tests/pylint.log
+
+workflows:
+  version: 2.1
+  main:
+    jobs:
+      - test-python310
+      - test-python311

@@ -1,10 +1,10 @@
-# Dynamic Versioning Utility for Distutils
+# Dynamic Versioning Utility for Setuptools
 
-This utility provides additional options to classes defined in distutils and used by setuptools to install and create packages.
+This utility provides additional options to classes defined in setuptools and used by setuptools to install and create packages.
 
 ## Functionality
 
-This package provides three new options to some of the standard `distutils` commands, such as `install`, `sdist`, etc.
+This package provides three new options to some of the standard `setuptools` commands, such as `install`, `sdist`, etc.
 
 ### New Version
 
@@ -42,12 +42,12 @@ __Note: Future versions of this option may include `major`, `minor`, and `patch`
 
 If none of the options are provided, one of two things will happen. First, the system will search for a `version.py` file in the top-level package. If one has been found, and it contains the version value (using the standard `__version__ = "1.0.0"` format), that is the version that will be used. However, if no version can be determined in this manner, the system defaults to creating a development version. Further, if the system defaults to creating a development version, and there have been __*no commits*__ since the last annotated tag, the version dictated by the tag will be used. In this way, if the standard `python setup.py [command]` is used, a version already determined will be used, or a development version is assumed, and if there have been no development commits, then the current tag/version is used.
 
-__Note__: If you use multiple distutils commands at once, the new option should modify the *first* command. For example:
+__Note__: If you use multiple setuptools commands at once, the new option should modify the *first* command. For example:
 
 ```bash
 jgambolputty@dev-box:~$ python setup.py sdist --new-version 4.2.7 bdist_wheel
 ```
-If the option is found later, the first command with trigger the default behavior.
+If the option is found later, the first command will trigger the default behavior and it may be too late to engage the dynamic version system.
 
 ## Assumptions Made
 
@@ -76,9 +76,12 @@ setup(
 	description='A neat new tool you won\'t want to miss',
 	...
 	cmdclass={
-		"sdist": dynamic_versioning.DynamicVersionSDist,
-		"bdist": dynamic_versioning.DynamicVersionBDist,
+		"bdist_egg": dynamic_versioning.DynamicVersionBDist,
+		"build_py": dynamic_versioning.DynamicVersionBuild,
 		"install": dynamic_versioning.DynamicVersionInstall,
+		"sdist": dynamic_versioning.DynamicVersionSDist,
+		"sdist": dynamic_versioning.DynamicVersionSDist,
+		"bdist_wheel": dynamic_versioning.DynamicVersionBDistWheel
 	}
 )
 ```

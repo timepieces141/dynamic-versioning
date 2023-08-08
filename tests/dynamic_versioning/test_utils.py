@@ -9,11 +9,6 @@ import os
 from pathlib import Path
 import subprocess
 
-# third parties libraries
-from distutils.command.bdist import bdist
-from distutils.command.install import install
-from distutils.command.sdist import sdist
-
 # testing libraries
 import pytest
 

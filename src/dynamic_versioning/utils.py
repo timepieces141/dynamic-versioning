@@ -173,4 +173,6 @@ def default_versioning():
         return create_dev_version(major, commits)
 
     # otherwise, use the version of the current tag
+    logging.info("There have been zero commits since the last tag, so the version must be the one associated with " \
+                 "the tag.")
     return f"{major}.{minor}.{patch}"

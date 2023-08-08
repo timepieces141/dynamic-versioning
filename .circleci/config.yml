@@ -1,0 +1,42 @@
+version: 2.1
+
+jobs:
+
+  test-python310:
+    docker:
+      - image: python:3.10
+    steps:
+      - checkout
+      - run:
+          command: pip install -e .[dev]
+      - run:
+          command: tests/run_tests.sh -s -vvv
+      - store_artifacts:
+          path: tests/htmlcov
+      - store_artifacts:
+          path: tests/coverage.log
+      - store_artifacts:
+          path: tests/pylint.log
+
+  test-python311:
+    docker:
+      - image: python:3.11
+    steps:
+      - checkout
+      - run:
+          command: pip install -e .[dev]
+      - run:
+          command: tests/run_tests.sh -s -vvv
+      - store_artifacts:
+          path: tests/htmlcov
+      - store_artifacts:
+          path: tests/coverage.log
+      - store_artifacts:
+          path: tests/pylint.log
+
+workflows:
+  version: 2.1
+  main:
+    jobs:
+      - test-python310
+      - test-python311

@@ -3,7 +3,7 @@ Exports the distutil class extensions and the configuration function.
 '''
 
 
-# distutils extended classes
+# setuptools extended classes
 from .commands import (
     DynamicVersionBDist,
     DynamicVersionBuild,

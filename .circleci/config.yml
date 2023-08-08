@@ -2,7 +2,7 @@ version: 2.1
 
 jobs:
 
-  test_python310:
+  test-python310:
     docker:
       - image: python:3.10
     steps:
@@ -12,11 +12,13 @@ jobs:
       - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:
-          - path: tests/htmlcov
-          - path: tests/coverage.log
-          - path: tests/pylint.log
+          path: tests/htmlcov
+      - store_artifacts:
+          path: tests/coverage.log
+      - store_artifacts:
+          path: tests/pylint.log
 
-  test_python311:
+  test-python311:
     docker:
       - image: python:3.11
     steps:
@@ -26,13 +28,15 @@ jobs:
       - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:
-          - path: tests/htmlcov
-          - path: tests/coverage.log
-          - path: tests/pylint.log
+          path: tests/htmlcov
+      - store_artifacts:
+          path: tests/coverage.log
+      - store_artifacts:
+          path: tests/pylint.log
 
 workflows:
   version: 2.1
   main:
     jobs:
-      - test_python310
-      - test_python311
+      - test-python310
+      - test-python311

@@ -116,7 +116,8 @@ class DynamicVersioningEggInfo(egg_info):
         if self.version_bump and not self.dev_version:
 
             # get the version as parsed by setuptools
-            st_version = utils.DynamicVersion.from_version_string(self._maybe_tag(self.distribution.metadata.get_version()))
+            st_version = utils.DynamicVersion.from_version_string(
+                self._maybe_tag(self.distribution.metadata.get_version()))
 
             # bump our version
             dynamic_version.bump(self.version_bump)

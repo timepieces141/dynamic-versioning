@@ -1,4 +1,9 @@
-pytest
 coverage
-pylint
+isort
+mypy
 pyfakefs
+pylint
+pytest
+types-setuptools
+types-toml
+types-Deprecated

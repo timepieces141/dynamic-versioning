@@ -8,8 +8,6 @@ jobs:
     steps:
       - checkout
       - run:
-          command: pip install -e .[dev]
-      - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:
           path: tests/htmlcov
@@ -23,8 +21,6 @@ jobs:
       - image: python:3.11
     steps:
       - checkout
-      - run:
-          command: pip install -e .[dev]
       - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:

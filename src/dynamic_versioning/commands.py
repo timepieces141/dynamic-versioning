@@ -1,130 +1,147 @@
 '''
-This module provides the extension to the setuptools install command class.
+This module provides the extension to the setuptools egg_info class/command.
 '''
 
 
 # core libraries
 import logging
+import os
 
-# third parties libraries
-from setuptools.command.bdist_egg import bdist_egg
-from setuptools.command.build_py import build_py
-from setuptools.command.install import install
-from setuptools.command.sdist import sdist
-from wheel.bdist_wheel import bdist_wheel
+# third party libraries
+from setuptools import _normalization  # type: ignore
+from setuptools.command.egg_info import egg_info
 
 # local libraries
-from . import utils
+from . import configuration, utils
 
 
-# pylint: disable=no-member, attribute-defined-outside-init
-class DynamicVersionBase:
+# pylint: disable=attribute-defined-outside-init
+class DynamicVersioningEggInfo(egg_info):
     '''
-    The base class that holds the overrides to setuptools initialization and run
-    methods.
+    An extention of the egg_info Command class that gives the user the ability
+    to dynamically determine the version via a defined cascading policy.
     '''
+
+    def _read_config(self):
+        '''
+        Load possible config files and load those values into instance fields.
+        '''
+        if config := configuration.load_config():
+            if "new-version" in config:
+                self.new_version = config["new-version"]
+            if "version-bump" in config:
+                self.version_bump = utils.VersionPart[config["version-bump"].upper()]
+            if "dev-version" in config:
+                self.dev_version = config["dev-version"].lower() in ("true", "t")
+
+
+    def _read_environment(self):
+        '''
+        Check the environment for our environment variables and load those
+        values into instance fields.
+        '''
+        if new_version := os.environ.get("DV_NEW_VERSION", None):
+            self.new_version = new_version
+        if version_bump := os.environ.get("DV_VERSION_BUMP", None):
+            self.version_bump = utils.VersionPart[version_bump.upper()]
+        if dev_version := os.environ.get("DV_DEV_VERSION", ""):
+            self.dev_version = dev_version.lower() in ("true", "t")
+
+
+    def _validate_fields(self):
+        '''
+        Validate the final values that have landed in our instance fields.
+        '''
+        # if new version exists, validate it as a semantic version (not 0.0.0)
+        if self.new_version:
+            if not utils.validate_semantic_versioning(self.new_version):
+                self.new_version = None
+
+
     def initialize_options(self):
         '''
-        Override of initialize_options that sets our three new fields. Here we
-        dish off to the utiltity function.
+        Override of initialize_options function to initialize the fields used to
+        determine the version dynamically.
         '''
-        # call super - it should be there, but we make sure
-        try:
-            super_init_opts = getattr(super(), "initialize_options")
-            if super_init_opts and callable(super_init_opts):
-                super_init_opts()
-        except AttributeError as err:
-            logging.critical("Programming error - please report this bug!")
-            raise SystemExit() from err
-
-        # we have no choice but to define these here
+        # call super, then add our fields
+        super().initialize_options()
         self.new_version = None
         self.version_bump = None
-        self.dev_version = None
+        self.dev_version = False
 
 
-    def run(self):
+    def tagged_version(self):
         '''
-        Overrides the run method so we can sneak in and set the
-        `self.distribution.metadata.version` value, and where appropriate
-        creating the version.py file, before the command is executed.
+        Override of the function that determines the version of the software.
+        Here we grab the value returned by the normal means, then use our
+        cascading policy to augment or accept that version.
+
+        1. If none of our values were provided through config or env, just call
+           super.
+        2. new-version is used above all, as long as it meets the semantic
+           versioning regex and is not 0.0.0.
+        3. Attempt a version bump of the portion defined in version-bump. This
+           entails getting the current version from git via the most recent tag,
+           then bumping. The higher of that or the version found in setup,py /
+           pyproject.toml (through the distribution object) wins.
+        4. Create a dev version, which bumps to the next version (as dictated by
+           version_bump, defaults to MAJOR) and appends .dev and the number of
+           commits since the last version.
+
         '''
-        # grab super.run(), since we are a mixin with technically no parent
-        try:
-            super_run = getattr(super(), "run")
-        except AttributeError as err:
-            logging.critical("Programming error - please report this bug!")
-            raise SystemExit() from err
+        # load config, then environment
+        self._read_config()
+        self._read_environment()
+        self._validate_fields()
 
-        # if none of the new options are given, perform the default action
-        if all(opt is None for opt in [self.new_version, self.version_bump, self.dev_version]):
-            self.distribution.metadata.version = utils.default_versioning()
-            utils.write_version_file(self.distribution.metadata.version, self.distribution.metadata.name)
-            super_run()
-            return
+        # if we're not being used, just pass through
+        if all(member is None for member in [self.new_version, self.version_bump]) and not self.dev_version:
+            logging.info("Dynamic Versioning is disabled")
+            return super().tagged_version()
 
-        # if --new-version has been provided it takes precendence over other fields
-        if self.new_version is not None:
-            self.distribution.metadata.version = self.new_version
-            utils.write_version_file(self.new_version, self.distribution.metadata.name)
-            super_run()
-            return
+        # if new_version exists, we use that
+        if self.new_version:
 
-        # from here on out we need git describe values
-        major, minor, patch, commits = utils.git_describe()
+            # call the same methods setuptools tagged_version calls, but with
+            # our version instead of the one parsed from the version field of
+            # setup.py or pyproject.toml
+            logging.info("Dynamic Versioning set to the new version '%s'", self.new_version)
+            tagged = self._maybe_tag(self.new_version)
+            return _normalization.best_effort_version(tagged)
 
-        # version bumping
-        if self.version_bump is not None:
-            self.distribution.metadata.version = utils.bump_version(major, minor, patch, self.version_bump)
-            utils.write_version_file(self.distribution.metadata.version, self.distribution.metadata.name)
-            super_run()
-            return
+        # retrieve the current version via git tag
+        dynamic_version = utils.get_version_from_git()
 
-        # development version
-        if self.dev_version is not None:
-            self.distribution.metadata.version = utils.create_dev_version(major, commits)
-            utils.write_version_file(self.distribution.metadata.version, self.distribution.metadata.name)
-            super_run()
-            return
+        # if we're bumping, bump and compare
+        if self.version_bump and not self.dev_version:
 
-# pylint: enable=no-member, attribute-defined-outside-init
+            # get the version as parsed by setuptools
+            st_version = utils.DynamicVersion.from_version_string(self._maybe_tag(self.distribution.metadata.get_version()))
 
+            # bump our version
+            dynamic_version.bump(self.version_bump)
 
-class DynamicVersionBDist(DynamicVersionBase, bdist_egg):
-    '''
-    Custom "bdist_egg" command subclass which accepts optional arguments.
-    '''
-    user_options = bdist_egg.user_options + utils.VERSIONING_OPTIONS
-    boolean_options = bdist_egg.boolean_options + utils.BOOLEAN_OPTIONS
+            # return the highest value - this covers bumping to next minor or
+            # major just by setting it setup,py or pyproject.toml
+            if st_version > dynamic_version:
+                logging.info("Version found in setup.py / pyproject.toml ('%s') is greater than the bumped version " \
+                             "('%s') of the last git tag. Selecting '%s'",
+                             st_version.version_string(), dynamic_version.version_string(), st_version.version_string())
+                return _normalization.best_effort_version(st_version.version_string())
 
+            logging.info("Git tag version '%s' portion bumped, resulting in new version '%s'",
+                         self.version_bump.name.title(), dynamic_version.version_string())
+            return _normalization.best_effort_version(dynamic_version.version_string())
 
-class DynamicVersionBuild(DynamicVersionBase, build_py):
-    '''
-    Custom "build" command subclass which accepts optional arguments.
-    '''
-    user_options = build_py.user_options + utils.VERSIONING_OPTIONS
-    boolean_options = build_py.boolean_options + utils.BOOLEAN_OPTIONS
+        # we're doing a dev version, so bump our version according to
+        # version_bump, default to the next major version
+        dynamic_version.bump(self.version_bump or utils.VersionPart.MAJOR)
 
+        # run it through setuptools
+        logging.info("Git tag version '%s' portion bumped, resulting in development version '%s'",
+                     self.version_bump.name.title() if self.version_bump else "Major",
+                     dynamic_version.dev_version_string())
+        tagged = self._maybe_tag(dynamic_version.dev_version_string())
+        return _normalization.best_effort_version(tagged)
 
-class DynamicVersionInstall(DynamicVersionBase, install):
-    '''
-    Custom "install" command subclass which accepts optional arguments.
-    '''
-    user_options = install.user_options + utils.VERSIONING_OPTIONS
-    boolean_options = install.boolean_options + utils.BOOLEAN_OPTIONS
-
-
-class DynamicVersionSDist(DynamicVersionBase, sdist):
-    '''
-    Custom "sdist" command subclass which accepts optional arguments.
-    '''
-    user_options = sdist.user_options + utils.VERSIONING_OPTIONS
-    boolean_options = sdist.boolean_options + utils.BOOLEAN_OPTIONS
-
-
-class DynamicVersionBDistWheel(DynamicVersionBase, bdist_wheel):
-    '''
-    Custom "bdist_wheel" command subclass which accepts optional arguments.
-    '''
-    user_options = bdist_wheel.user_options + utils.VERSIONING_OPTIONS
-    boolean_options = bdist_wheel.boolean_options + utils.BOOLEAN_OPTIONS
+# pylint: enable=attribute-defined-outside-init

@@ -15,20 +15,6 @@ from setuptools import setup, find_packages
 # setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s: %(message)s')
 
-# attempt to use dynamic versioning here as well
-classes = {}
-try:
-    import dynamic_versioning
-    dynamic_versioning.configure()
-    classes = {
-        "bdist_egg": dynamic_versioning.DynamicVersionBDist,
-        "build_py": dynamic_versioning.DynamicVersionBuild,
-        "install": dynamic_versioning.DynamicVersionInstall,
-        "sdist": dynamic_versioning.DynamicVersionSDist,
-        "bdist_wheel": dynamic_versioning.DynamicVersionBDistWheel
-    }
-except:
-    logging.warning("Unable to use dynamic-versioning")
 
 # classifications for this project - see
 # https://pypi.python.org/pypi?%3Aaction=list_classifiers
@@ -98,7 +84,7 @@ def get_extras_require():
 # call setup with our project-specific values
 setup(
     name="dynamic-versioning",
-    version=None,
+    version="1.1.0",
     description="Provides dynamic versioning of python packages by providing additional options to the standard " \
                 "setuptools commands.",
     long_description=README,
@@ -112,6 +98,5 @@ setup(
     packages=find_packages(SRC_DIR),
     scripts=SCRIPTS,
     install_requires=get_install_requires(),
-    extras_require=get_extras_require(),
-    cmdclass=classes
+    extras_require=get_extras_require()
 )

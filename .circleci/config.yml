@@ -68,19 +68,19 @@ workflows:
     jobs:
       - test-python310
       - test-python311
-      - publish-to-pypi:
-        requires:
-          - test-python310
-          - test-python311
-          filters:
-            branches:
-              only:
-                - main
       - publish-to-test-pypi:
-        requires:
-          - test-python310
-          - test-python311
+          requires:
+            - test-python310
+            - test-python311
           filters:
             branches:
               only:
                 - dev
+      - publish-to-pypi:
+          requires:
+            - test-python310
+            - test-python311
+          filters:
+            branches:
+              only:
+                - main

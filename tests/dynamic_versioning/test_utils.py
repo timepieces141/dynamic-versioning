@@ -143,15 +143,31 @@ def test_dynamic_version_comparison(version1, version2, comparison):
         assert version1 == version2
 
 
+class MockPopen:
+    communicate_stdout = None
+    communicate_stderr = None
+
+    def __init__(self, args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, value, traceback):
+        pass
+
+    def communicate(self):
+        # return (None, b'an error\n')
+        return (type(self).communicate_stdout, type(self).communicate_stderr)
+
+
 def test__git_fetch_error(monkeypatch, caplog):
     '''
     Test the _git_fetch() function when an error is returned by `git fetch`.
     '''
-    # monkeypatch the Popen object's communicate method to produce our specific
-    # error
-    def mock_communicate(self, input=None, timeout=None):
-        return (None, b'an error\n')
-    monkeypatch.setattr(subprocess.Popen, "communicate", mock_communicate)
+    # patch Popen and communicate() to give an error
+    MockPopen.communicate_stderr = b'an error\n'
+    monkeypatch.setattr("subprocess.Popen", MockPopen)
 
     # test the function, expecting an error
     with pytest.raises(SystemExit):
@@ -159,21 +175,20 @@ def test__git_fetch_error(monkeypatch, caplog):
     assert "an error" in caplog.text
 
 
-@pytest.mark.parametrize("communicate_out_err,error", [
-    ((None, b'fatal: No names found, cannot describe anything.\n'), test_utils.NoAnnotatedTagError),
-    ((None, b'fatal: Some other error.\n'), SystemExit),
-    ((b'1.0.1-0-g876ff07', None), None),
+@pytest.mark.parametrize("communicate_out,communicate_err,error", [
+    (None, b'fatal: No names found, cannot describe anything.\n', test_utils.NoAnnotatedTagError),
+    (None, b'fatal: Some other error.\n', test_utils.GitDescribeError),
+    (b'1.0.1-0-g876ff07', None, None),
 ])
-def test__git_describe(monkeypatch, communicate_out_err, error):
+def test__git_describe(monkeypatch, communicate_out, communicate_err, error):
     '''
     Test the _git_describe() function returns the correct value or raises the
     correct exception, depending on the return of Popen's communicate().
     '''
-    # monkeypatch the Popen object's communicate method to produce our specific
-    # output and/or error
-    def mock_communicate(self, input=None, timeout=None):
-        return communicate_out_err
-    monkeypatch.setattr(subprocess.Popen, "communicate", mock_communicate)
+    # patch Popen and communicate() to give the out and error we want
+    MockPopen.communicate_stdout = communicate_out
+    MockPopen.communicate_stderr = communicate_err
+    monkeypatch.setattr("subprocess.Popen", MockPopen)
 
     # test the function when there is an error
     if error:
@@ -209,7 +224,7 @@ def test_get_version_from_git_current_version(monkeypatch, caplog):
     # patch _git_fetch, then _git_describe to raise an error like when git is
     # not available
     monkeypatch.setattr(test_utils, "_git_fetch", lambda project_dir: None)
-    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: (_ for _ in ()).throw(SystemExit()))
+    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: (_ for _ in ()).throw(test_utils.GitDescribeError()))
 
     # test the function with a fallback current version
     assert "1.2.3" == test_utils.get_version_from_git("1.2.3").version_string()

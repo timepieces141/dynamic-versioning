@@ -154,10 +154,22 @@ def _git_fetch(project_dir: pathlib.Path) -> None:
         raise SystemExit()
 
 
-class NoAnnotatedTagError(Exception):
+class DynamicVersioningError(Exception):
+    '''
+    Parent exception for all exceptions raised in Dynamic Versioning.
+    '''
+
+
+class NoAnnotatedTagError(DynamicVersioningError):
     '''
     Exception raised when `git describe` cannot find any candidate annotated
     tags from which to parse a version.
+    '''
+
+
+class GitDescribeError(DynamicVersioningError):
+    '''
+    Exception raised when `git describe` cannot be performed successfully.
     '''
 
 
@@ -176,7 +188,7 @@ def _git_describe(project_dir: pathlib.Path) -> str:
             raise NoAnnotatedTagError()
 
         logging.fatal(err.decode().strip())
-        raise SystemExit()
+        raise GitDescribeError()
 
     # return the describe line as a string
     return out.decode().strip()
@@ -199,7 +211,7 @@ def get_version_from_git(fallback_current_version: str | None=None) -> DynamicVe
     except NoAnnotatedTagError:
         logging.info("No annotated git tags could be found. Version 0.0.0 will be bumped accordingly.")
         return DynamicVersion(0, 0, 0)
-    except SystemExit  as err:
+    except GitDescribeError:
         # if current version has been statically defined, use that
         if fallback_current_version is not None:
             logging.warning("Encountered an error when attemting to find the most recent annotated git tag.")

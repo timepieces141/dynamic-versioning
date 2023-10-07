@@ -68,16 +68,12 @@ jobs:
       - run: |
           VERSION=$(cat testdist/VERSION)
           rm testdist/VERSION
-          echo ${CIRCLE_PROJECT_USERNAME}
-          echo ${CIRCLE_PROJECT_REPONAME}
-          echo ${CIRCLE_SHA1}
-          echo ${VERSION}
           ghr \
             -username timepieces141 \
             -repository dynamic-versioning \
             -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
             -commitish ${CIRCLE_SHA1} \
-            -name "Dynamic Versioning ${VERSION}" \
+            -name "Dynamic Versioning ${VERSION} [draft]" \
             -draft \
             -delete \
             "${VERSION}" \
@@ -120,13 +116,13 @@ jobs:
           VERSION=$(cat dist/VERSION)
           rm dist/VERSION
           ghr \
-            -username ${CIRCLE_PROJECT_USERNAME} \
-            -repository ${CIRCLE_PROJECT_REPONAME} \
+            -username timepieces141 \
+            -repository dynamic-versioning \
             -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
             -commitish ${CIRCLE_SHA1} \
             -name "Dynamic Versioning $VERSION" \
             -delete \
-            $VERSION \
+            "${VERSION}" \
             dist/
 
 workflows:

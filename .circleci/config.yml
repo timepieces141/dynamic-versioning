@@ -73,7 +73,7 @@ jobs:
             -repository dynamic-versioning \
             -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
             -commitish ${CIRCLE_SHA1} \
-            -name "Dynamic Versioning ${VERSION} [draft]" \
+            -name "Dynamic Versioning ${VERSION}" \
             -draft \
             -delete \
             "${VERSION}" \
@@ -120,7 +120,7 @@ jobs:
             -repository dynamic-versioning \
             -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
             -commitish ${CIRCLE_SHA1} \
-            -name "Dynamic Versioning $VERSION" \
+            -name "Dynamic Versioning ${VERSION}" \
             -delete \
             "${VERSION}" \
             dist/

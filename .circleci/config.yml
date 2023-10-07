@@ -39,8 +39,8 @@ jobs:
           command: |
             apt-get update
             apt install -y python3-pip
-            pip wheel --no-deps -w dist .
             pip install --upgrade -r dist-requirements.txt
+            pip wheel --no-deps -w testdist .
             twine upload \
               --username "__token__" \
               --password "${TESTPYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
@@ -48,7 +48,36 @@ jobs:
               --disable-progress-bar \
               --non-interactive \
               --verbose \
-              dist/*
+              --skip-existing \
+              testdist/*
+            pip install testdist/*
+            pip show dynamic-versioning | grep Version | cut -d ":" -f2 | xargs > testdist/VERSION
+      - persist_to_workspace:
+          root: testdist
+          paths:
+            - *.whl
+            - VERSION
+
+  publish-draft-github-release:
+    docker:
+      - image: cibuilds/github:0.13
+    steps:
+      - attach_workspace:
+          at: testdist
+
+      - run: |
+          VERSION=$(cat testdist/VERSION)
+          rm testdist/VERSION
+          ghr \
+            -username ${CIRCLE_PROJECT_USERNAME} \
+            -repository ${CIRCLE_PROJECT_REPONAME} \
+            -token FILL_IN_TOKEN_HERE \
+            -commitish ${CIRCLE_SHA1} \
+            -name "Dynamic Versioning $VERSION" \
+            -draft \
+            -delete \
+            $VERSION \
+            testdist/
 
   publish-to-pypi:
     docker:
@@ -59,8 +88,8 @@ jobs:
           command: |
             apt-get update
             apt install -y python3-pip
-            pip wheel --no-deps -w dist .
             pip install --upgrade -r dist-requirements.txt
+            pip wheel --no-deps -w dist .
             twine upload \
               --username "__token__" \
               --password "${PYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
@@ -68,6 +97,33 @@ jobs:
               --non-interactive \
               --verbose \
               dist/*
+            pip install dist/*
+            pip show dynamic-versioning | grep Version | cut -d ":" -f2 | xargs > dist/VERSION
+      - persist_to_workspace:
+          root: dist
+          paths:
+            - *.whl
+            - VERSION
+
+  publish-github-release:
+    docker:
+      - image: cibuilds/github:0.13
+    steps:
+      - attach_workspace:
+          at: dist
+
+      - run: |
+          VERSION=$(cat dist/VERSION)
+          rm dist/VERSION
+          ghr \
+            -username ${CIRCLE_PROJECT_USERNAME} \
+            -repository ${CIRCLE_PROJECT_REPONAME} \
+            -token FILL_IN_TOKEN_HERE \
+            -commitish ${CIRCLE_SHA1} \
+            -name "Dynamic Versioning $VERSION" \
+            -delete \
+            $VERSION \
+            dist/
 
 workflows:
   version: 2.1
@@ -83,10 +139,24 @@ workflows:
             branches:
               only:
                 - dev
+      - publish-draft-github-release:
+          requires:
+            - publish-to-test-pypi
+          filters:
+            branches:
+              only:
+                - dev
       - publish-to-pypi:
           requires:
             - test-python310
             - test-python311
+          filters:
+            branches:
+              only:
+                - main
+      - publish-github-release:
+          requires:
+            - publish-to-pypi
           filters:
             branches:
               only:

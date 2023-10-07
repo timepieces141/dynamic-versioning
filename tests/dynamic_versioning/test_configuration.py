@@ -52,6 +52,7 @@ def test__find_config_file(fs):
 TEST_INI_CONTENTS_FORMAT = '''
 [dynamic_versioning]
 new-version = {new_version}
+current-version = {current_version}
 version-bump = {version_bump}
 dev-version = {dev_version}
 '''
@@ -70,6 +71,7 @@ def test_load_config_dynamic_versioning_ini(monkeypatch, fs):
 
     # fill that file with some contents we can check on later
     formatted = TEST_INI_CONTENTS_FORMAT.format(new_version="1.0.0",
+                                                current_version="1.0.0",
                                                 version_bump="update",
                                                 dev_version="TRUE")
     fs.create_file(ini_file, contents=formatted)
@@ -77,6 +79,7 @@ def test_load_config_dynamic_versioning_ini(monkeypatch, fs):
     # test the function
     config = test_configuration.load_config()
     assert "1.0.0" == config["new-version"]
+    assert "1.0.0" == config["current-version"]
     assert "update" == config["version-bump"]
     assert "TRUE" == config["dev-version"]
 
@@ -91,6 +94,7 @@ dynamic = ["version"]
 
 [tool.dynamic_versioning]
 new-version = "{new_version}"
+current-version = "{current_version}"
 version-bump = "{version_bump}"
 dev-version = "{dev_version}"
 '''
@@ -108,6 +112,7 @@ def test_load_config_pyproject_toml(monkeypatch, fs):
     # fill the toml file with some contents we can check on later
     toml_file = project_dir / "pyproject.toml"
     formatted = TEST_TOML_CONTENTS_FORMAT.format(new_version="1.0.0",
+                                                 current_version="1.0.0",
                                                  version_bump="update",
                                                  dev_version="TRUE")
     fs.create_file(toml_file, contents=formatted)
@@ -115,6 +120,7 @@ def test_load_config_pyproject_toml(monkeypatch, fs):
     # test the function
     config = test_configuration.load_config()
     assert "1.0.0" == config["new-version"]
+    assert "1.0.0" == config["current-version"]
     assert "update" == config["version-bump"]
     assert "TRUE" == config["dev-version"]
 

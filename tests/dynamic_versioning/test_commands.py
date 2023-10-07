@@ -48,12 +48,13 @@ def test__read_config(monkeypatch, empty_distribution):
     '''
     # patch the call to load_config() to return a dictionary of values we can
     # test later
-    monkeypatch.setattr(configuration, "load_config", lambda: {"new-version": "1.0.0", "version-bump": "update", "dev-version": "TRUE"})
+    monkeypatch.setattr(configuration, "load_config", lambda: {"new-version": "1.0.0", "current-version": "1.0.0", "version-bump": "update", "dev-version": "TRUE"})
 
     # read the config and check the values
     instance = test_commands.DynamicVersioningEggInfo(empty_distribution)
     instance._read_config()
     assert instance.new_version == "1.0.0"
+    assert instance.current_version == "1.0.0"
     assert instance.version_bump == utils.VersionPart.UPDATE
     assert instance.dev_version
 
@@ -65,6 +66,7 @@ def test__read_environment(empty_distribution):
     '''
     # set the values in the env
     os.environ["DV_NEW_VERSION"] = "1.0.0"
+    os.environ["DV_CURRENT_VERSION"] = "1.0.0"
     os.environ["DV_VERSION_BUMP"] = "Minor"
     os.environ["DV_DEV_VERSION"] = "false"
 
@@ -72,6 +74,7 @@ def test__read_environment(empty_distribution):
     instance = test_commands.DynamicVersioningEggInfo(empty_distribution)
     instance._read_environment()
     assert instance.new_version == "1.0.0"
+    assert instance.current_version == "1.0.0"
     assert instance.version_bump == utils.VersionPart.MINOR
     assert not instance.dev_version
 
@@ -87,8 +90,10 @@ def test__validate_fields(monkeypatch, empty_distribution):
     # test the function
     instance = test_commands.DynamicVersioningEggInfo(empty_distribution)
     instance.new_version = "Doesn't conform to semantic versioning"
+    instance.current_version = "Doesn't conform to semantic versioning"
     instance._validate_fields()
     assert not instance.new_version
+    assert not instance.current_version
 
 
 def test_initialize_options(empty_distribution):
@@ -147,12 +152,12 @@ def version_from_git(monkeypatch):
     A fixture that patches the call to utils.get_version_from_git() to return a
     canned DynamicVersion object.
     '''
-    monkeypatch.setattr(utils, "get_version_from_git", lambda: utils.DynamicVersion(1, 2, 3, 20))
+    monkeypatch.setattr(utils, "get_version_from_git", lambda current_version: utils.DynamicVersion(1, 2, 3, 20))
 
 
 @pytest.mark.parametrize("dist_version,bump,final_version,log_output", [
-    ("0.0.1", utils.VersionPart.UPDATE, "1.2.4", "Git tag version 'Update' portion bumped, resulting in new version '1.2.4'"),
-    ("0.0.1", utils.VersionPart.PATCH, "1.2.4", "Git tag version 'Update' portion bumped, resulting in new version '1.2.4'"),
+    ("0.0.1", utils.VersionPart.PATCH, "1.2.4", "Git tag version 'Patch' portion bumped, resulting in new version '1.2.4'"),
+    ("0.0.1", utils.VersionPart.UPDATE, "1.2.4", "Git tag version 'Patch' portion bumped, resulting in new version '1.2.4'"),
     ("0.0.1", utils.VersionPart.MINOR, "1.3.0", "Git tag version 'Minor' portion bumped, resulting in new version '1.3.0'"),
     ("0.0.1", utils.VersionPart.MAJOR, "2.0.0", "Git tag version 'Major' portion bumped, resulting in new version '2.0.0'"),
     ("1.3.0", utils.VersionPart.UPDATE, "1.3.0", "Version found in setup.py / pyproject.toml ('1.3.0') is greater than the bumped version ('1.2.4') of the last git tag. Selecting '1.3.0'"),
@@ -176,8 +181,8 @@ def test_bumped_version(monkeypatch, caplog, empty_distribution, neuter_config_f
 
 @pytest.mark.parametrize("bump,final_version,log_output", [
     (None, "2.0.0.dev20", "Git tag version 'Major' portion bumped, resulting in development version '2.0.0.dev20'"),
-    (utils.VersionPart.UPDATE, "1.2.4.dev20", "Git tag version 'Update' portion bumped, resulting in development version '1.2.4.dev20'"),
-    (utils.VersionPart.PATCH, "1.2.4.dev20", "Git tag version 'Update' portion bumped, resulting in development version '1.2.4.dev20'"),
+    (utils.VersionPart.PATCH, "1.2.4.dev20", "Git tag version 'Patch' portion bumped, resulting in development version '1.2.4.dev20'"),
+    (utils.VersionPart.UPDATE, "1.2.4.dev20", "Git tag version 'Patch' portion bumped, resulting in development version '1.2.4.dev20'"),
     (utils.VersionPart.MINOR, "1.3.0.dev20", "Git tag version 'Minor' portion bumped, resulting in development version '1.3.0.dev20'"),
     (utils.VersionPart.MAJOR, "2.0.0.dev20", "Git tag version 'Major' portion bumped, resulting in development version '2.0.0.dev20'"),
 ])

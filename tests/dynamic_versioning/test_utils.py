@@ -197,7 +197,25 @@ def test_get_version_from_git_no_annotated_tags(monkeypatch, caplog):
     # test the function
     assert "0.0.0" == test_utils.get_version_from_git().version_string()
     assert "Determining the current version through 'git describe'" in caplog.text
-    assert "No annotated git tags could be found. Reverting to version 0.0.1" in caplog.text
+    assert "No annotated git tags could be found. Version 0.0.0 will be bumped accordingly." in caplog.text
+
+
+def test_get_version_from_git_current_version(monkeypatch, caplog):
+    '''
+    Test the get_version_from_git() function when _git_describe() returns a
+    string not parseable with the REGEX, but a "fallback" current-version has
+    been defined.
+    '''
+    # patch _git_fetch, then _git_describe to raise an error like when git is
+    # not available
+    monkeypatch.setattr(test_utils, "_git_fetch", lambda project_dir: None)
+    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: (_ for _ in ()).throw(SystemExit()))
+
+    # test the function with a fallback current version
+    assert "1.2.3" == test_utils.get_version_from_git("1.2.3").version_string()
+    assert "Determining the current version through 'git describe'" in caplog.text
+    assert "Encountered an error when attemting to find the most recent annotated git tag." in caplog.text
+    assert "However, a fallback current version has been defined. Version '1.2.3' will be bumped accordingly." in caplog.text
 
 
 def test_get_version_from_git_bad_git_describe(monkeypatch, caplog):

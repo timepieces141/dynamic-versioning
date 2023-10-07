@@ -34,7 +34,7 @@ def validate_semantic_versioning(potential_version: str) -> bool:
 def parse_version_parts(potential_version: str) -> list[int]:
     '''
     Parse a potential semantic version string to a list of the major, minor, and
-    update (patch) portions.
+    patch (update) portions.
     '''
     try:
         version_match = cast(re.Match[str], re.search(_SEMANTIC_VERSIONING_REGEX, potential_version))
@@ -53,8 +53,8 @@ class VersionPart(enum.Enum):
     '''
     MAJOR = 0
     MINOR = 1
-    UPDATE = 3
     PATCH = 3
+    UPDATE = 3
 
 
 # forward reference
@@ -84,7 +84,7 @@ class DynamicVersion:
         return cls(*parse_version_parts(version_str))
 
 
-    def bump(self, part: VersionPart):
+    def bump(self, part: VersionPart) -> None:
         '''
         Bump the corresponding part of this version, cascading where necessary.
         '''
@@ -97,25 +97,25 @@ class DynamicVersion:
             self.minor += 1
             self.patch = 0
 
-        if part in [VersionPart.UPDATE, VersionPart.PATCH]:
+        if part in [VersionPart.PATCH, VersionPart.UPDATE]:
             self.patch += 1
 
 
-    def version_string(self):
+    def version_string(self) -> str:
         '''
         Provide the version as a string
         '''
         return f"{self.major}.{self.minor}.{self.patch}"
 
 
-    def dev_version_string(self):
+    def dev_version_string(self) -> str:
         '''
         Provide the development version as a string.
         '''
         return f"{self.major}.{self.minor}.{self.patch}.dev{self.commits}"
 
 
-    def __lt__(self, other):
+    def __lt__(self, other) -> bool:
         '''
         Check if this version is less than another version.
         '''
@@ -129,7 +129,7 @@ class DynamicVersion:
         return False
 
 
-    def __eq__(self, other):
+    def __eq__(self, other) -> bool:
         '''
         Check if this version is equal to another.
         '''
@@ -182,7 +182,7 @@ def _git_describe(project_dir: pathlib.Path) -> str:
     return out.decode().strip()
 
 
-def get_version_from_git() -> DynamicVersion:
+def get_version_from_git(fallback_current_version: str | None=None) -> DynamicVersion:
     '''
     Determine the version from the most recent annotated tag.
     '''
@@ -197,8 +197,15 @@ def get_version_from_git() -> DynamicVersion:
     try:
         git_desc = _git_describe(project_dir)
     except NoAnnotatedTagError:
-        logging.info("No annotated git tags could be found. Reverting to version 0.0.1")
+        logging.info("No annotated git tags could be found. Version 0.0.0 will be bumped accordingly.")
         return DynamicVersion(0, 0, 0)
+    except SystemExit  as err:
+        # if current version has been statically defined, use that
+        if fallback_current_version is not None:
+            logging.warning("Encountered an error when attemting to find the most recent annotated git tag.")
+            logging.info("However, a fallback current version has been defined. Version '%s' will be bumped " \
+                         "accordingly.", fallback_current_version)
+            return DynamicVersion.from_version_string(fallback_current_version)
 
     # parse the describe line
     try:

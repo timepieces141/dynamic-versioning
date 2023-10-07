@@ -4,7 +4,7 @@ jobs:
 
   test-python310:
     docker:
-      - image: python:3.10
+      - image: python:3.10-slim
     steps:
       - checkout
       - run:
@@ -18,7 +18,7 @@ jobs:
 
   test-python311:
     docker:
-      - image: python:3.11
+      - image: python:3.11-slim
     steps:
       - checkout
       - run:
@@ -30,9 +30,57 @@ jobs:
       - store_artifacts:
           path: tests/pylint.log
 
+  publish-to-test-pypi:
+    docker:
+      - image: python:3.11-slim
+    steps:
+      - checkout
+      - run:
+          command: |
+            sudo apt-get update
+            sudo apt install -y python3-pip
+            pip wheel --no-deps -w dist .
+            pip install --upgrade -r dist-requirements.txt
+            twine upload \
+              --username "__token__" \
+              --password "${TESTPYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
+              --disable-progress-bar --non-interactive --verbose dist/*
+
+  publish-to-pypi:
+    docker:
+      - image: python:3.11-slim
+    steps:
+      - checkout
+      - run:
+          command: |
+            sudo apt-get update
+            sudo apt install -y python3-pip
+            pip wheel --no-deps -w dist .
+            pip install --upgrade -r dist-requirements.txt
+            twine upload \
+              --username "__token__" \
+              --password "${PYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
+              --disable-progress-bar --non-interactive --verbose dist/*
+
 workflows:
   version: 2.1
   main:
     jobs:
       - test-python310
       - test-python311
+      - publish-to-pypi:
+        requires:
+          - test-python310
+          - test-python311
+          filters:
+            branches:
+              only:
+                - main
+      - publish-to-test-pypi:
+        requires:
+          - test-python310
+          - test-python311
+          filters:
+            branches:
+              only:
+                - dev

@@ -64,7 +64,9 @@ def load_config() -> Dict[str, Any] | None:
 @deprecated(version="1.1.0",
             reason="All configuration can be provided in dynamic_versioning.ini, pyproject.toml, and/or in the " \
                    "environment")
-def configure(top_level_pkg=None, version_file_name=None, version_docstring_format=None): # pylint: disable=unused-argument
+def configure(top_level_pkg=None,
+              version_file_name=None,
+              version_docstring_format=None) -> None: # pylint: disable=unused-argument
     '''
     Accept the configuration values and set the global variables used to create
     the version file.

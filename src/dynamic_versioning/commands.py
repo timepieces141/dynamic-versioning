@@ -22,33 +22,37 @@ class DynamicVersioningEggInfo(egg_info):
     to dynamically determine the version via a defined cascading policy.
     '''
 
-    def _read_config(self):
+    def _read_config(self) -> None:
         '''
         Load possible config files and load those values into instance fields.
         '''
         if config := configuration.load_config():
             if "new-version" in config:
-                self.new_version = config["new-version"]
+                self.new_version: str | None = config["new-version"]
+            if "current-version" in config:
+                self.current_version: str | None = config["current-version"]
             if "version-bump" in config:
-                self.version_bump = utils.VersionPart[config["version-bump"].upper()]
+                self.version_bump: utils.VersionPart | None = utils.VersionPart[config["version-bump"].upper()]
             if "dev-version" in config:
-                self.dev_version = config["dev-version"].lower() in ("true", "t")
+                self.dev_version: bool = config["dev-version"].lower() in ("true", "t")
 
 
-    def _read_environment(self):
+    def _read_environment(self) -> None:
         '''
         Check the environment for our environment variables and load those
         values into instance fields.
         '''
         if new_version := os.environ.get("DV_NEW_VERSION", None):
             self.new_version = new_version
+        if current_version := os.environ.get("DV_CURRENT_VERSION", None):
+            self.current_version = current_version
         if version_bump := os.environ.get("DV_VERSION_BUMP", None):
             self.version_bump = utils.VersionPart[version_bump.upper()]
         if dev_version := os.environ.get("DV_DEV_VERSION", ""):
             self.dev_version = dev_version.lower() in ("true", "t")
 
 
-    def _validate_fields(self):
+    def _validate_fields(self) -> None:
         '''
         Validate the final values that have landed in our instance fields.
         '''
@@ -57,8 +61,13 @@ class DynamicVersioningEggInfo(egg_info):
             if not utils.validate_semantic_versioning(self.new_version):
                 self.new_version = None
 
+        # if current version exists, validate it as a semantic version (not 0.0.0)
+        if self.current_version:
+            if not utils.validate_semantic_versioning(self.current_version):
+                self.current_version = None
 
-    def initialize_options(self):
+
+    def initialize_options(self) -> None:
         '''
         Override of initialize_options function to initialize the fields used to
         determine the version dynamically.
@@ -66,11 +75,12 @@ class DynamicVersioningEggInfo(egg_info):
         # call super, then add our fields
         super().initialize_options()
         self.new_version = None
+        self.current_version = None
         self.version_bump = None
         self.dev_version = False
 
 
-    def tagged_version(self):
+    def tagged_version(self) -> str:
         '''
         Override of the function that determines the version of the software.
         Here we grab the value returned by the normal means, then use our
@@ -84,6 +94,12 @@ class DynamicVersioningEggInfo(egg_info):
            entails getting the current version from git via the most recent tag,
            then bumping. The higher of that or the version found in setup,py /
            pyproject.toml (through the distribution object) wins.
+        3a. If the current version cannot be determined because no annotated git
+           tag exists (call to git was successful, but there were no tags), then
+           the version is assumed to be 0.0.0 and will be bumped accordingly.
+        3b. If the current version cannot be determined because the call to git
+           failed, then the statically defined current-version will be used,
+           where possible, and will be bumped accordingly.
         4. Create a dev version, which bumps to the next version (as dictated by
            version_bump, defaults to MAJOR) and appends .dev and the number of
            commits since the last version.
@@ -106,18 +122,18 @@ class DynamicVersioningEggInfo(egg_info):
             # our version instead of the one parsed from the version field of
             # setup.py or pyproject.toml
             logging.info("Dynamic Versioning set to the new version '%s'", self.new_version)
-            tagged = self._maybe_tag(self.new_version)
+            tagged = self._maybe_tag(self.new_version) # type: ignore
             return _normalization.best_effort_version(tagged)
 
         # retrieve the current version via git tag
-        dynamic_version = utils.get_version_from_git()
+        dynamic_version = utils.get_version_from_git(self.current_version)
 
         # if we're bumping, bump and compare
         if self.version_bump and not self.dev_version:
 
             # get the version as parsed by setuptools
             st_version = utils.DynamicVersion.from_version_string(
-                self._maybe_tag(self.distribution.metadata.get_version()))
+                self._maybe_tag(self.distribution.metadata.get_version())) # type: ignore
 
             # bump our version
             dynamic_version.bump(self.version_bump)
@@ -142,7 +158,7 @@ class DynamicVersioningEggInfo(egg_info):
         logging.info("Git tag version '%s' portion bumped, resulting in development version '%s'",
                      self.version_bump.name.title() if self.version_bump else "Major",
                      dynamic_version.dev_version_string())
-        tagged = self._maybe_tag(dynamic_version.dev_version_string())
+        tagged = self._maybe_tag(dynamic_version.dev_version_string()) # type: ignore
         return _normalization.best_effort_version(tagged)
 
 # pylint: enable=attribute-defined-outside-init

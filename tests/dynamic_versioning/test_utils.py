@@ -4,301 +4,278 @@ Test the module dynamic_versioning.utils
 
 
 # core libraries
-import importlib.machinery
-import os
-from pathlib import Path
+import pathlib
 import subprocess
+from collections import Counter
 
 # testing libraries
 import pytest
 
-# local libraries
-from dynamic_versioning import configuration
-
-# the module under test
-from dynamic_versioning import utils
+# dynamic versioning libraries
+from dynamic_versioning import utils as test_utils
 
 
-def test_git_describe_no_tags(monkeypatch, caplog):
-    '''
-    Test that the system exits when there are no annotated tags in the repo.
-    '''
-    # monkeypatch the Popen object's communicate method to produce our specific
-    # error
-    def mock_communicate(self, input=None, timeout=None):
-        return (None, b'fatal: No names found, cannot describe anything.\n')
-    monkeypatch.setattr(subprocess.Popen, "communicate", mock_communicate)
-
-    # test the function, expecting the error
-    with pytest.raises(SystemExit):
-        utils.git_describe()
-        assert "No annotated tags! Please make sure there is at least one annotated tag for this " \
-               "repository." in caplog.text
-
-
-def test_git_describe_unknown_error(monkeypatch, caplog):
-    '''
-    Test that the system exits when `git describe` returns an unknown error.
-    '''
-    # monkeypatch the Popen object's communicate method to produce an error
-    def mock_communicate(self, input=None, timeout=None):
-        return (None, b'Some other error')
-    monkeypatch.setattr(subprocess.Popen, "communicate", mock_communicate)
-
-    # test the function, expecting the error
-    with pytest.raises(SystemExit):
-        utils.git_describe()
-        assert "Some other error" in caplog.text
-
-
-def test_git_describe_cant_parse(monkeypatch, caplog):
-    '''
-    Test that the system exits when `git describe` produces an unparseable
-    description.
-    '''
-    # monkeypatch the Popen object's communicate method to produce an error
-    def mock_communicate(self, input=None, timeout=None):
-        return (b'lskdjfoisfdojl', None)
-    monkeypatch.setattr(subprocess.Popen, "communicate", mock_communicate)
-
-    # test the function, expecting the error
-    with pytest.raises(SystemExit):
-        utils.git_describe()
-        assert "The most recent tag 'lskdjfoisfdojl' cannot be parsed. Please check that your current tag adheres to " \
-               "simple semantic versioning (major.minor.[patch])." in caplog.text
-
-
-@pytest.mark.parametrize("description", [
-    (b'0.0.0-12-gdeadbee'), # major, minor, patch
-    (b'0.0-12-gdeadbee'), # major & minor
+@pytest.mark.parametrize("parts,result", [
+    ([0, 0, 0], False),
+    ([1, 0, 0], True)
 ])
-def test_git_describe_all_zeroes_error(monkeypatch, caplog, description):
+def test_validate_semantic_versioning(monkeypatch, parts, result):
     '''
-    Test that the system exits when `git describe` evaluates to 0.0.0 as a
-    version.
+    Test the validate_sematic_versioning() function, which just makes sure that
+    the list version parts (successfully) returned by parse_version_parts() is
+    not 0.0.0.
     '''
-    # monkeypatch the Popen object's communicate method to produce an error
-    def mock_communicate(self, input=None, timeout=None):
-        return (description, None)
-    monkeypatch.setattr(subprocess.Popen, "communicate", mock_communicate)
-
-    # test the function, expecting the error
-    with pytest.raises(SystemExit):
-        utils.git_describe()
-        assert "The most recent tag evaluates to 0.0.0 (with 12 additional commits). Please check that your current " \
-               "tag adhere's to simple semantic versioning (major.minor.[patch])." in caplog.text
-
-
-@pytest.mark.parametrize("description,expected", [
-    (b'0.1-12-gdeadbee', [0, 1, 0, 12]), # major, minor
-    (b'0.0.1-12-gdeadbee', [0, 0, 1, 12]), # major, minor, patch
-    (b'v0.1-12-gdeadbee', [0, 1, 0, 12]), # "v" major, minor
-    (b'v0.0.1-12-gdeadbee', [0, 0, 1, 12]), # "v" major, minor, patch
-    (b'V0.1-12-gdeadbee', [0, 1, 0, 12]), # "V" major, minor
-    (b'V0.0.1-12-gdeadbee', [0, 0, 1, 12]), # "V" major, minor, patch
-])
-def test_git_describe(monkeypatch, caplog, description, expected):
-    '''
-    Test that the git_describe method returns us the current version (as a
-    list of major, minor, patch). Here we test lots of descriptions.
-    '''
-    # monkeypatch the Popen object's communicate method to produce a parseable
-    # description
-    def mock_communicate(self, input=None, timeout=None):
-        return (description, None)
-    monkeypatch.setattr(subprocess.Popen, "communicate", mock_communicate)
+    # patch parse_version_parts() to return the given parts
+    monkeypatch.setattr(test_utils, "parse_version_parts", lambda potential_version: parts)
 
     # test the function
-    assert utils.git_describe() == expected
-    assert "Current version: {}.{}.{} (with {} additional commits)".format(*expected) in caplog.text
+    assert result == test_utils.validate_semantic_versioning("doesn't matter")
 
 
-def test_bump_version_bad_option(caplog):
+@pytest.mark.parametrize("potential_version,raise_error", [
+    ("foobar", True),
+    ("v1.2.3", False),
+    ("V1.2.3", False),
+    ("1.2.3", False)
+])
+def test_parse_version_parts(potential_version, raise_error):
     '''
-    Test that the bump_version method errors when an invalid value has been
-    provided to --version-bump.
+    Test the parse_version_parts() function can parse strings representing
+    semantic versions into a list of the three parts, or tries to System Exit if
+    it cannot.
     '''
+    # if the version would raise an error, catch it here with pytest
+    if raise_error:
+        with pytest.raises(SystemExit):
+            test_utils.parse_version_parts(potential_version)
+
+    # otherwise just test it
+    else:
+        Counter(sorted([1, 0, 0])) == test_utils.parse_version_parts(potential_version)
+
+
+@pytest.mark.parametrize("parts,error", [
+    ([], TypeError),
+    ([1, 2, 3], None),
+])
+def test_dynamic_version_from_version_string(monkeypatch, parts, error):
+    '''
+    Test the DynamicVersion's from_version_string() method can construct the
+    object via the version string setuptools parses from setup.py /
+    pyproject.toml.
+    '''
+    # patch parse_version_parts() to return the given parts
+    monkeypatch.setattr(test_utils, "parse_version_parts", lambda potential_version: parts)
+
+    if error:
+        with pytest.raises(error):
+            test_utils.DynamicVersion.from_version_string("Doesn't matter")
+
+    else:
+        test_utils.DynamicVersion.from_version_string("Doesn't matter")
+
+
+@pytest.mark.parametrize("version_bump,bumped_version_parts", [
+    (test_utils.VersionPart.MAJOR, [2, 0, 0]),
+    (test_utils.VersionPart.MINOR, [1, 1, 0]),
+    (test_utils.VersionPart.UPDATE, [1, 0, 1]),
+    (test_utils.VersionPart.PATCH, [1, 0, 1]),
+])
+def test_dynamic_version_bump(version_bump, bumped_version_parts):
+    '''
+    Test the DynamicVersion's bump() method produces the correct version.
+    '''
+    dynamic_version = test_utils.DynamicVersion(1, 0, 0)
+    assert dynamic_version.major == 1
+    assert dynamic_version.minor == 0
+    assert dynamic_version.patch == 0
+    dynamic_version.bump(version_bump)
+    assert dynamic_version.major == bumped_version_parts[0]
+    assert dynamic_version.minor == bumped_version_parts[1]
+    assert dynamic_version.patch == bumped_version_parts[2]
+
+
+@pytest.mark.parametrize("version_parts,version_string", [
+    ([1, 0, 0], "1.0.0"),
+    ([1, 1, 0], "1.1.0"),
+    ([1, 1, 1], "1.1.1"),
+])
+def test_dynamic_version_version_string(version_parts, version_string):
+    '''
+    Test the DynamicVersion's version_string() method produces the correct
+    version string.
+    '''
+    assert version_string == test_utils.DynamicVersion(*version_parts).version_string()
+
+
+@pytest.mark.parametrize("version_parts,version_string", [
+    ([1, 0, 0, 1], "1.0.0.dev1"),
+    ([1, 1, 0, 2], "1.1.0.dev2"),
+    ([1, 1, 1, 3], "1.1.1.dev3"),
+])
+def test_dynamic_version_dev_version_string(version_parts, version_string):
+    '''
+    Test the DynamicVersion's dev_version_string() method produces the correct
+    version string.
+    '''
+    assert version_string == test_utils.DynamicVersion(*version_parts).dev_version_string()
+
+
+@pytest.mark.parametrize("version1,version2,comparison", [
+    (test_utils.DynamicVersion(1, 2, 4), test_utils.DynamicVersion(1, 2, 5), "<"),
+    (test_utils.DynamicVersion(1, 2, 4), test_utils.DynamicVersion(1, 3, 0), "<"),
+    (test_utils.DynamicVersion(1, 2, 4), test_utils.DynamicVersion(2, 0, 0), "<"),
+    (test_utils.DynamicVersion(1, 2, 5), test_utils.DynamicVersion(1, 2, 4), ">"),
+    (test_utils.DynamicVersion(1, 3, 0), test_utils.DynamicVersion(1, 2, 4), ">"),
+    (test_utils.DynamicVersion(2, 0, 0), test_utils.DynamicVersion(1, 2, 4), ">"),
+    (test_utils.DynamicVersion(1, 2, 4), test_utils.DynamicVersion(1, 2, 4), None),
+])
+def test_dynamic_version_comparison(version1, version2, comparison):
+    '''
+    Test that DynamicVersion objects can be compared for less than / greater
+    than / equals.
+    '''
+    if comparison == "<":
+        assert version1 < version2
+    elif comparison == ">":
+        assert version1 > version2
+    else:
+        assert version1 == version2
+
+
+class MockPopen:
+    communicate_stdout = None
+    communicate_stderr = None
+
+    def __init__(self, args, **kwargs):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, value, traceback):
+        pass
+
+    def communicate(self):
+        # return (None, b'an error\n')
+        return (type(self).communicate_stdout, type(self).communicate_stderr)
+
+
+def test__git_fetch_error(monkeypatch, caplog):
+    '''
+    Test the _git_fetch() function when an error is returned by `git fetch`.
+    '''
+    # patch Popen and communicate() to give an error
+    MockPopen.communicate_stderr = b'an error\n'
+    monkeypatch.setattr("subprocess.Popen", MockPopen)
+
+    # test the function, expecting an error
     with pytest.raises(SystemExit):
-        utils.bump_version(None, None, None, "foobar")
-        assert "The value provided to --version-bump ('foobar') is invalid. It must be one of: 'major', 'minor', or " \
-               "'patch'." in caplog.text
+        test_utils._git_fetch(pathlib.Path.cwd())
+    assert "an error" in caplog.text
 
 
-@pytest.mark.parametrize("major,minor,patch,bump,expected", [
-    (1, 2, 3, "major", "2.0.0"), # major bump
-    (1, 2, 3, "MAJOR", "2.0.0"), # MAJOR bump
-    (1, 2, 3, "minor", "1.3.0"), # minor bump
-    (1, 2, 3, "MINOR", "1.3.0"), # MINOR bump
-    (1, 2, 3, "patch", "1.2.4"), # patch bump
-    (1, 2, 3, "PATCH", "1.2.4"), # PATCH bump
+@pytest.mark.parametrize("communicate_out,communicate_err,error", [
+    (None, b'fatal: No names found, cannot describe anything.\n', test_utils.NoAnnotatedTagError),
+    (None, b'fatal: Some other error.\n', test_utils.GitDescribeError),
+    (b'1.0.1-0-g876ff07', None, None),
 ])
-def test_bump_version(caplog, major, minor, patch, bump, expected):
+def test__git_describe(monkeypatch, communicate_out, communicate_err, error):
     '''
-    Test that the bump_version method bumps the version provided accordingly.
+    Test the _git_describe() function returns the correct value or raises the
+    correct exception, depending on the return of Popen's communicate().
     '''
-    assert expected == utils.bump_version(major, minor, patch, bump)
+    # patch Popen and communicate() to give the out and error we want
+    MockPopen.communicate_stdout = communicate_out
+    MockPopen.communicate_stderr = communicate_err
+    monkeypatch.setattr("subprocess.Popen", MockPopen)
+
+    # test the function when there is an error
+    if error:
+        with pytest.raises(error):
+            test_utils._git_describe(pathlib.Path.cwd())
+
+    # otherwise just test the function
+    else:
+        test_utils._git_describe(pathlib.Path.cwd())
 
 
-def test_create_dev_version():
+def test_get_version_from_git_no_annotated_tags(monkeypatch, caplog):
     '''
-    Test that the create_dev_version returns a "dev" formatted version.
+    Test the get_version_from_git() function when no annotated tags were found
+    from calling _git_describe().
     '''
-    assert "2.0.0.dev8" == utils.create_dev_version(1, 8)
-
-
-def test__read_version_file_not_found(monkeypatch, caplog):
-    '''
-    Test the _read_version_file method when the version.py file does not exist.
-    PyFakeFS does not work with importlib, so here we will just make the
-    loader's exec_module() method raise the appropriate exception.
-    '''
-    # patch loader's exec_module method
-    monkeypatch.setattr(importlib.machinery.SourceFileLoader,
-                        "exec_module",
-                        lambda self, module: (_ for _ in ()).throw(FileNotFoundError()))
-
-    # patch the call to get the version path, so we can test for it in the logging
-    version_file = Path("/development") / "project" / "src" / "top_level" / "version.py"
-    monkeypatch.setattr(configuration, "version_path", lambda: str(version_file))
-
-    # test the function expecting the error
-    assert utils._read_version_file() is None
-    assert f"Version file was not found at '{version_file}'. Attempting to determine version another " \
-           "way." in caplog.text
-
-
-def test__read_version_file_missing_attr(monkeypatch, caplog):
-    '''
-    Test the _read_version_file method when the version.py file exists, but does
-    not contain the __version__ "magic" variable. PyFakeFS does not work with
-    importlib, so here we will just make importlib.util's module_from_spec
-    () method return an object, but on that doesn't have the attribute we are
-    looking for. And then, patch the loader's exec_module() to pass, since we
-    don't want it to choke on our dummy module.
-    '''
-    # patch importlib's module_from_spec to return our object with the attribute
-    monkeypatch.setattr(importlib.util,
-                        "module_from_spec",
-                        lambda spec: type('',(object,),{})())
-
-    # patch loader's exec_module to pass
-    monkeypatch.setattr(importlib.machinery.SourceFileLoader, "exec_module", lambda self, module: None)
-
-    # patch the call to get the version path, so we can test for it in the logging
-    version_file = Path("/development") / "project" / "src" / "top_level" / "version.py"
-    monkeypatch.setattr(configuration, "version_path", lambda: str(version_file))
-
-    # test the function expecting the error
-    assert utils._read_version_file() is None
-    assert f"Version file was found at '{version_file}', however it did not contain the variable __version__. " \
-           "Attempting to determine version another way." in caplog.text
-
-
-def test__read_version_file(monkeypatch, caplog):
-    '''
-    Test the _read_version_file method when the version.py file exists and it
-    contains an exported version. PyFakeFS does not work with importlib, so
-    here we will just make importlib.util's module_from_spec() method return an
-    object that has the attribute we are looking for. And then, patch the
-    loader's exec_module() to pass, since we don't want it to choke on our
-    dummy module.
-    '''
-    # patch importlib's module_from_spec to return our object with the attribute
-    monkeypatch.setattr(importlib.util,
-                        "module_from_spec",
-                        lambda spec: type('',(object,),{"__version__": "1.2.3"})())
-
-    # patch loader's exec_module to pass
-    monkeypatch.setattr(importlib.machinery.SourceFileLoader, "exec_module", lambda self, module: None)
-
-    # patch the call to get the version path, so we can test for it in the logging
-    version_file = Path("/development") / "project" / "src" / "top_level" / "version.py"
-    monkeypatch.setattr(configuration, "version_path", lambda: str(version_file))
-
-    # test the function expecting the error
-    assert utils._read_version_file() == "1.2.3"
-    assert f"Version file found. Using version '1.2.3' found within." in caplog.text
-
-
-VERSION_FILE_EXPECTED = """'''
-Version of 'dynamic-versioning'
-'''
-
-__version__ = "1.2.3"
-"""
-
-def test_write_version_file(fs, monkeypatch):
-    '''
-    Test the version file get written correctly.
-    '''
-    # first patch the call to configuration's version_path function
-    top_level_dir = Path("/development") / "project" / "src" / "top_level"
-    fs.create_dir(top_level_dir)
-    version_file = top_level_dir / "version.py"
-    monkeypatch.setattr(configuration, "version_path", lambda: str(version_file))
-
-    # next patch the call to configuration's version_docstring function
-    monkeypatch.setattr(configuration, "version_docstring", lambda: "'''\nVersion of '{package_name}'\n'''\n\n")
-
-    # call the function
-    utils.write_version_file("1.2.3", "dynamic-versioning")
-    assert os.path.exists(version_file)
-
-    # open and compare the file contents with what we expect
-    with open(version_file, "r", encoding="utf-8") as version_fd:
-        assert VERSION_FILE_EXPECTED == version_fd.read()
-
-
-VERSION_FILE_EXPECTED2 = """'''
-Version of 'Dynamic Versioning'
-'''
-
-__version__ = "1.2.3"
-"""
-
-def test_write_version_file_custom_description(fs, monkeypatch):
-    '''
-    Test that when a custom version docstring has been provided through
-    configuration (especially one that does NOT provide a format "location" for
-    the package name), it is used to create the version.py file.
-    '''
-    # first patch the call to configuration's version_path function
-    top_level_dir = Path("/development") / "project" / "src" / "top_level"
-    fs.create_dir(top_level_dir)
-    version_file = top_level_dir / "version.py"
-    monkeypatch.setattr(configuration, "version_path", lambda: str(version_file))
-
-    # next patch the call to configuration's version_docstring function
-    monkeypatch.setattr(configuration, "version_docstring", lambda: "'''\nVersion of 'Dynamic Versioning'\n'''\n\n")
-
-    # call the function
-    utils.write_version_file("1.2.3", "this value shouldn't matter")
-    assert os.path.exists(version_file)
-
-    # open and compare the file contents with what we expect
-    with open(version_file, "r", encoding="utf-8") as version_fd:
-        assert VERSION_FILE_EXPECTED2 == version_fd.read()
-
-
-@pytest.mark.parametrize("read_version_file_return,git_describe_return,create_dev_version_return,expected", [
-    ("1.2.3", None, None, "1.2.3"),
-    (None, [1, 2, 3, 8], "2.0.0.dev8", "2.0.0.dev8"),
-    (None, [1, 2, 3, 0], None, "1.2.3"),
-])
-def test_default_versioning(monkeypatch, read_version_file_return, git_describe_return, create_dev_version_return, expected):
-    '''
-    Test the default_versioning method's triage logic. The appropriate calls
-    out are patched because each of them are tested elsewhere - we're just
-    concerned here with the triage logic.
-    '''
-    # patch call to _read_version_file
-    monkeypatch.setattr(utils, "_read_version_file", lambda: read_version_file_return)
-
-    # patch call to git_describe
-    monkeypatch.setattr(utils, "git_describe", lambda: git_describe_return)
-
-    # patch call to create_dev_version
-    monkeypatch.setattr(utils, "create_dev_version", lambda major, commits: create_dev_version_return)
+    # patch _git_fetch and _git_describe to produce our error
+    monkeypatch.setattr(test_utils, "_git_fetch", lambda project_dir: None)
+    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: (_ for _ in ()).throw(test_utils.NoAnnotatedTagError()))
 
     # test the function
-    assert utils.default_versioning() == expected
+    assert "0.0.0" == test_utils.get_version_from_git().version_string()
+    assert "Determining the current version through 'git describe'" in caplog.text
+    assert "No annotated git tags could be found. Version 0.0.0 will be bumped accordingly." in caplog.text
+
+
+def test_get_version_from_git_current_version(monkeypatch, caplog):
+    '''
+    Test the get_version_from_git() function when _git_describe() returns a
+    string not parseable with the REGEX, but a "fallback" current-version has
+    been defined.
+    '''
+    # patch _git_fetch, then _git_describe to raise an error like when git is
+    # not available
+    monkeypatch.setattr(test_utils, "_git_fetch", lambda project_dir: None)
+    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: (_ for _ in ()).throw(test_utils.GitDescribeError()))
+
+    # test the function with a fallback current version
+    assert "1.2.3" == test_utils.get_version_from_git("1.2.3").version_string()
+    assert "Determining the current version through 'git describe'" in caplog.text
+    assert "Encountered an error when attemting to find the most recent annotated git tag." in caplog.text
+    assert "However, a fallback current version has been defined. Version '1.2.3' will be bumped accordingly." in caplog.text
+
+
+def test_get_version_from_git_bad_git_describe(monkeypatch, caplog):
+    '''
+    Test the get_version_from_git() function when _git_describe() returns a
+    string not parseable with the REGEX.
+    '''
+    # patch _git_fetch and _git_describe to produce our output
+    monkeypatch.setattr(test_utils, "_git_fetch", lambda project_dir: None)
+    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: "This does not produce a version")
+
+    # test the function expecting an error
+    with pytest.raises(SystemExit):
+        test_utils.get_version_from_git()
+    assert "Determining the current version through 'git describe'" in caplog.text
+    assert "The most recent tag 'This does not produce a version' cannot be parsed" in caplog.text
+
+
+def test_get_version_from_git_zero_tag(monkeypatch, caplog):
+    '''
+    Test the get_version_from_git() function when _git_describe() returns a
+    string that represents the version 0.0.0.
+    '''
+    # patch _git_fetch and _git_describe to produce our output
+    monkeypatch.setattr(test_utils, "_git_fetch", lambda project_dir: None)
+    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: "0.0.0-20-g876ff07")
+
+    # test the function expecting an error
+    with pytest.raises(SystemExit):
+        test_utils.get_version_from_git()
+    assert "Determining the current version through 'git describe'" in caplog.text
+    assert "The current tag evaluates to 0.0.0" in caplog.text
+
+
+def test_get_version_from_git(monkeypatch, caplog):
+    '''
+    Test the get_version_from_git() function when _git_describe() returns a
+    valid version.
+    '''
+    # patch _git_fetch and _git_describe to produce our output
+    monkeypatch.setattr(test_utils, "_git_fetch", lambda project_dir: None)
+    monkeypatch.setattr(test_utils, "_git_describe", lambda project_dir: "1.0.1-20-g876ff07")
+
+    # test the function
+    test_utils.get_version_from_git()
+    assert "Determining the current version through 'git describe'" in caplog.text
+    assert "Current version: 1.0.1 (with 20 additional commits)" in caplog.text
+

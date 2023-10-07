@@ -73,8 +73,8 @@ jobs:
           echo ${CIRCLE_SHA1}
           echo ${VERSION}
           ghr \
-            -username ${CIRCLE_PROJECT_USERNAME} \
-            -repository ${CIRCLE_PROJECT_REPONAME} \
+            -username timepieces141 \
+            -repository dynamic-versioning \
             -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
             -commitish ${CIRCLE_SHA1} \
             -name "Dynamic Versioning ${VERSION}" \

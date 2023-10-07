@@ -68,16 +68,7 @@ jobs:
       - run: |
           VERSION=$(cat testdist/VERSION)
           rm testdist/VERSION
-          ghr \
-            -username ${CIRCLE_PROJECT_USERNAME} \
-            -repository ${CIRCLE_PROJECT_REPONAME} \
-            -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
-            -commitish ${CIRCLE_SHA1} \
-            -name "Dynamic Versioning $VERSION" \
-            -draft \
-            -delete \
-            $VERSION \
-            testdist/
+          ghr -username ${CIRCLE_PROJECT_USERNAME} -repository ${CIRCLE_PROJECT_REPONAME} -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} -commitish ${CIRCLE_SHA1} -name "Dynamic Versioning ${VERSION}" -draft -delete "${VERSION}" testdist/
 
   publish-to-pypi:
     docker:

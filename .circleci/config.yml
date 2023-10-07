@@ -44,7 +44,11 @@ jobs:
             twine upload \
               --username "__token__" \
               --password "${TESTPYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
-              --disable-progress-bar --non-interactive --verbose dist/*
+              --repository testpypi \
+              --disable-progress-bar \
+              --non-interactive \
+              --verbose \
+              dist/*
 
   publish-to-pypi:
     docker:
@@ -60,7 +64,10 @@ jobs:
             twine upload \
               --username "__token__" \
               --password "${PYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
-              --disable-progress-bar --non-interactive --verbose dist/*
+              --disable-progress-bar \
+              --non-interactive \
+              --verbose \
+              dist/*
 
 workflows:
   version: 2.1

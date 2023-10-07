@@ -71,7 +71,7 @@ jobs:
           ghr \
             -username ${CIRCLE_PROJECT_USERNAME} \
             -repository ${CIRCLE_PROJECT_REPONAME} \
-            -token FILL_IN_TOKEN_HERE \
+            -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
             -commitish ${CIRCLE_SHA1} \
             -name "Dynamic Versioning $VERSION" \
             -draft \
@@ -118,7 +118,7 @@ jobs:
           ghr \
             -username ${CIRCLE_PROJECT_USERNAME} \
             -repository ${CIRCLE_PROJECT_REPONAME} \
-            -token FILL_IN_TOKEN_HERE \
+            -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
             -commitish ${CIRCLE_SHA1} \
             -name "Dynamic Versioning $VERSION" \
             -delete \

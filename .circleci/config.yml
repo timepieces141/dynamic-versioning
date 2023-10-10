@@ -4,11 +4,9 @@ jobs:
 
   test-python310:
     docker:
-      - image: python:3.10
+      - image: python:3.10-slim
     steps:
       - checkout
-      - run:
-          command: pip install -e .[dev]
       - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:
@@ -20,11 +18,9 @@ jobs:
 
   test-python311:
     docker:
-      - image: python:3.11
+      - image: python:3.11-slim
     steps:
       - checkout
-      - run:
-          command: pip install -e .[dev]
       - run:
           command: tests/run_tests.sh -s -vvv
       - store_artifacts:
@@ -34,9 +30,134 @@ jobs:
       - store_artifacts:
           path: tests/pylint.log
 
+  publish-to-test-pypi:
+    docker:
+      - image: python:3.11-slim
+    steps:
+      - checkout
+      - run:
+          command: |
+            apt-get update
+            apt install -y python3-pip
+            pip install --upgrade -r dist-requirements.txt
+            pip wheel --no-deps -w testdist .
+            twine upload \
+              --username "__token__" \
+              --password "${TESTPYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
+              --repository testpypi \
+              --disable-progress-bar \
+              --non-interactive \
+              --verbose \
+              --skip-existing \
+              testdist/*
+            pip install testdist/*
+            pip show dynamic-versioning | grep Version | cut -d ":" -f2 | xargs > testdist/VERSION
+      - persist_to_workspace:
+          root: testdist
+          paths:
+            - '*.whl'
+            - VERSION
+
+  publish-draft-github-release:
+    docker:
+      - image: cibuilds/github:0.13
+    steps:
+      - attach_workspace:
+          at: testdist
+
+      - run: |
+          VERSION=$(cat testdist/VERSION)
+          rm testdist/VERSION
+          ghr \
+            -username timepieces141 \
+            -repository dynamic-versioning \
+            -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
+            -commitish ${CIRCLE_SHA1} \
+            -name "Dynamic Versioning ${VERSION}" \
+            -draft \
+            -delete \
+            "${VERSION}" \
+            testdist/
+
+  publish-to-pypi:
+    docker:
+      - image: python:3.11-slim
+    steps:
+      - checkout
+      - run:
+          command: |
+            apt-get update
+            apt install -y python3-pip
+            pip install --upgrade -r dist-requirements.txt
+            pip wheel --no-deps -w dist .
+            twine upload \
+              --username "__token__" \
+              --password "${PYPI_DYNAMIC_VERSIONING_API_TOKEN}" \
+              --disable-progress-bar \
+              --non-interactive \
+              --verbose \
+              dist/*
+            pip install dist/*
+            pip show dynamic-versioning | grep Version | cut -d ":" -f2 | xargs > dist/VERSION
+      - persist_to_workspace:
+          root: dist
+          paths:
+            - '*.whl'
+            - VERSION
+
+  publish-github-release:
+    docker:
+      - image: cibuilds/github:0.13
+    steps:
+      - attach_workspace:
+          at: dist
+
+      - run: |
+          VERSION=$(cat dist/VERSION)
+          rm dist/VERSION
+          ghr \
+            -username timepieces141 \
+            -repository dynamic-versioning \
+            -token ${DYNAMIC_VERSIONING_GITHUB_PERSONAL_ACCESS_TOKEN} \
+            -commitish ${CIRCLE_SHA1} \
+            -name "Dynamic Versioning ${VERSION}" \
+            -delete \
+            "${VERSION}" \
+            dist/
+
 workflows:
   version: 2.1
   main:
     jobs:
       - test-python310
       - test-python311
+      - publish-to-test-pypi:
+          requires:
+            - test-python310
+            - test-python311
+          filters:
+            branches:
+              only:
+                - dev
+      - publish-draft-github-release:
+          requires:
+            - publish-to-test-pypi
+          filters:
+            branches:
+              only:
+                - dev
+      - publish-to-pypi:
+          requires:
+            - test-python310
+            - test-python311
+          filters:
+            branches:
+              only:
+                - main
+      - publish-github-release:
+          requires:
+            - publish-to-pypi
+          filters:
+            branches:
+              only:
+                - main

@@ -4,130 +4,148 @@ Test the module dynamic_versioning.configuration
 
 
 # core libraries
-import inspect
-import os
 import pathlib
+import warnings
 
 # testing libraries
 import pytest
 
-# module under test
-from dynamic_versioning import configuration
+# dynamic versioning libraries
+from dynamic_versioning import configuration as test_configuration
 
 
-def test__discover_top_level_package_failure():
+def test__find_config_file(fs):
     '''
-    Test the _discover_top_level_package function when the project directory
-    given does not contain a directory with an __init__.py somewhere in the tree
-    (such as the testing directory we are in).
+    Test the _find_config_file() function can find the config in a directory
+    tree.
     '''
-    with pytest.raises(SystemExit):
-        configuration._discover_top_level_package(os.path.dirname(__file__))
+    # create a testing directory tree
+    project_dir = pathlib.Path("/project")
+    deep_dir = project_dir / "foo" / "bar" / "baz"
+    fs.create_dir(str(deep_dir))
+
+    # test the function when the file is not found
+    assert not test_configuration._find_config_file(project_dir)
+
+    # place a file a the last level and test
+    baz_file = deep_dir / "dynamic_versioning.ini"
+    fs.create_file(baz_file)
+    assert baz_file == test_configuration._find_config_file(project_dir)
+
+    # place a file a the next level and test
+    bar_file = deep_dir.parent / "DYNAMIC_VERSIONING.ini"
+    fs.create_file(bar_file)
+    assert bar_file == test_configuration._find_config_file(project_dir)
+
+    # place a file a the next level and test
+    foo_file = deep_dir.parent.parent / "dynamic_versioning.INI"
+    fs.create_file(foo_file)
+    assert foo_file == test_configuration._find_config_file(project_dir)
+
+    # place a file a the top level and test
+    project_file = project_dir / "DYNAMIC_VERSIONING.INI"
+    fs.create_file(project_file)
+    assert project_file == test_configuration._find_config_file(project_dir)
 
 
-def test__discover_top_level_package():
+# a format for writing an INI file
+TEST_INI_CONTENTS_FORMAT = '''
+[dynamic_versioning]
+new-version = {new_version}
+current-version = {current_version}
+version-bump = {version_bump}
+dev-version = {dev_version}
+'''
+
+
+def test_load_config_dynamic_versioning_ini(monkeypatch, fs):
     '''
-    Test the _discover_top_level_package function when given a valid project
-    directory, such as OUR project directory.
+    Test the load_config() function will return the
+    dynamic_versioning.ini file contents if the _find_config_file() function
+    returns a valid path.
     '''
-    project_dir = pathlib.Path(os.path.dirname(__file__)) / ".." / ".."
-    expected_top_level = project_dir.expanduser().resolve() / "src" / "dynamic_versioning"
-    assert expected_top_level.samefile(configuration._discover_top_level_package(project_dir.expanduser().resolve()))
+    # patch the call to _find_config_file to find it
+    project_dir = pathlib.Path("/")
+    ini_file = project_dir / "dynamic_versioning.ini"
+    monkeypatch.setattr(test_configuration, "_find_config_file", lambda project_dir: ini_file)
+
+    # fill that file with some contents we can check on later
+    formatted = TEST_INI_CONTENTS_FORMAT.format(new_version="1.0.0",
+                                                current_version="1.0.0",
+                                                version_bump="update",
+                                                dev_version="TRUE")
+    fs.create_file(ini_file, contents=formatted)
+
+    # test the function
+    config = test_configuration.load_config()
+    assert "1.0.0" == config["new-version"]
+    assert "1.0.0" == config["current-version"]
+    assert "update" == config["version-bump"]
+    assert "TRUE" == config["dev-version"]
 
 
-def test__find_setup_file_not_found():
+# a format for writing an INI file
+TEST_TOML_CONTENTS_FORMAT = '''
+[project]
+name = "example-project"
+dependencies = []
+dynamic = ["version"]
+
+
+[tool.dynamic_versioning]
+new-version = "{new_version}"
+current-version = "{current_version}"
+version-bump = "{version_bump}"
+dev-version = "{dev_version}"
+'''
+
+
+def test_load_config_pyproject_toml(monkeypatch, fs):
     '''
-    Test the _find_setup_file function when there is no file to find (such as
-    when a project uses a project.toml, which I will address in a later
-    release).
+    Test the load_config() function will return the dynamic_versioning section
+    of the pyproject.toml file if the _find_config_file() function returns None.
     '''
-    # the setup file will not be in the stack from this call
-    with pytest.raises(SystemExit) as err:
-        configuration._find_setup_file()
-        assert str(err) == "Unable to find the setup.py file!"
+    # patch the call to _find_config_file to find nothing
+    project_dir = pathlib.Path("/")
+    monkeypatch.setattr(test_configuration, "_find_config_file", lambda project_dir: None)
+
+    # fill the toml file with some contents we can check on later
+    toml_file = project_dir / "pyproject.toml"
+    formatted = TEST_TOML_CONTENTS_FORMAT.format(new_version="1.0.0",
+                                                 current_version="1.0.0",
+                                                 version_bump="update",
+                                                 dev_version="TRUE")
+    fs.create_file(toml_file, contents=formatted)
+
+    # test the function
+    config = test_configuration.load_config()
+    assert "1.0.0" == config["new-version"]
+    assert "1.0.0" == config["current-version"]
+    assert "update" == config["version-bump"]
+    assert "TRUE" == config["dev-version"]
 
 
-def test__find_setup_file(monkeypatch):
+def test_load_config_none(monkeypatch, fs):
     '''
-    Test the _find_setup_file function when the setup file CAN be found in the
-    stack, as it will be when setup.py is called directly or when pip calls it.
+    Test the load_config() function will return None if the _find_config_file()
+    function returns None and the pyproject.toml file cannot be found.
     '''
-    # patch the call to get the stack to return our own stack
-    def mock_stack(context=1):
-        return [
-            inspect.FrameInfo(filename="foobar.py", frame=None, lineno=141, function=None, code_context=None, index=141),
-            inspect.FrameInfo(filename="setup.py", frame=None, lineno=141, function=None, code_context=None, index=141),
-            inspect.FrameInfo(filename="don't see.py", frame=None, lineno=141, function=None, code_context=None, index=141),
-        ]
-    monkeypatch.setattr(inspect, "stack", mock_stack)
+    # patch the call to _find_config_file to find nothing
+    project_dir = pathlib.Path("/")
+    monkeypatch.setattr(test_configuration, "_find_config_file", lambda project_dir: None)
 
-    # test the function expecting it to find the setup file
-    assert "setup.py" == pathlib.Path(configuration._find_setup_file()).name
+    # test the function
+    assert not test_configuration.load_config()
 
 
-def test_configure_top_level_given():
+def test_deprecated_configure():
     '''
-    Test the configure() function when the top-level package path has been
-    given.
+    Test that the configure() function emits a DeprecatedWarning.
     '''
-    # call the configure function with a dummy path
-    top_level_dir = "/somewhere"
-    configuration.configure(top_level_dir)
-    assert str(configuration.version_path()) == "/somewhere/version.py"
-    assert configuration.version_docstring() == "'''\nVersion of '{package_name}'\n'''\n\n"
-
-
-def test_configure_no_top_level_given(monkeypatch):
-    '''
-    In this test we test what value the system will give
-    _discover_top_level_package and make sure it is what is expected. We
-    monkeypatch that call to check the incoming, but to also provide a canned
-    response (avoiding the error condition) that can be checked when the value
-    is used.
-    '''
-    # patch the call to _find_setup_file, since that is tested elsewhere
-    monkeypatch.setattr(configuration, "_find_setup_file", lambda: pathlib.Path(__file__))
-
-    # define a mock _discover_top_level_package
-    def mock_discover_top_level_package(project_dir):
-        '''
-        Mock _discover_top_level_package function that checks our incoming
-        value, then returns a canned value that can be checked later.
-        '''
-        # the caller is us, so it should be this module's file
-        assert project_dir == pathlib.Path(__file__).parent
-        return "/somewhere"
-
-    # patch the call
-    monkeypatch.setattr(configuration, "_discover_top_level_package", mock_discover_top_level_package)
-
-    # call the function and test configuration sets
-    configuration.configure()
-    assert str(configuration.version_path()) == "/somewhere/version.py"
-    assert configuration.version_docstring() == "'''\nVersion of '{package_name}'\n'''\n\n"
-
-
-def test_configure_version_file_given():
-    '''
-    Test the configure function with a configured version file name. Here we
-    provide the top level directory in the simplest of ways, since that
-    functionality has already been tested.
-    '''
-    # call the configure function with a dummy path
-    top_level_dir = "/somewhere"
-    configuration.configure(top_level_dir, "foobar.py")
-    assert str(configuration.version_path()) == "/somewhere/foobar.py"
-    assert configuration.version_docstring() == "'''\nVersion of '{package_name}'\n'''\n\n"
-
-
-def test_configure_docstring_given():
-    '''
-    Test the configure function with a configured version file docstring. Here
-    we provide the top level directory in the simplest of ways, since that
-    functionality has already been tested.
-    '''
-    # call the configure function with a dummy path
-    top_level_dir = "/somewhere"
-    configuration.configure(top_level_dir, version_docstring_format="description")
-    assert str(configuration.version_path()) == "/somewhere/version.py"
-    assert configuration.version_docstring() == "description"
+    with warnings.catch_warnings(record=True) as warns:
+        warnings.simplefilter("always")
+        test_configuration.configure()
+        assert len(warns) == 1
+        assert warns[0].category == DeprecationWarning
+        assert "All configuration can be provided in dynamic_versioning.ini, pyproject.toml, and/or in the " \
+               "environment" in str(warns[0].message)

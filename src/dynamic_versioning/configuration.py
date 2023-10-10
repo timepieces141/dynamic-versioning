@@ -1,82 +1,78 @@
 '''
-This module defines the configuration function that must be called sometime
-before the call to setup(), even if it provides no changes to the configuration
-values.
+This module provides utility functions for dealing with loading values from an
+INI file (falling back to pyproject.toml).
 '''
 
 
 # core libraries
+import configparser
+import logging
 import os
 import pathlib
-import inspect
+from typing import Any, Dict
+
+# third party libraries
+import toml
+from deprecated import deprecated
 
 
-# module level configuration
-__configuration__ = {
-    "version_path": None,
-    "docstring": "'''\nVersion of '{package_name}'\n'''\n\n"
-}
-
-def version_path():
+def _find_config_file(project_dir: pathlib.Path) -> pathlib.Path | None:
     '''
-    Helper function for retrieving the path at which the version file should be
-    written, or after it has been written, can be found.
-    '''
-    return __configuration__["version_path"]
-
-
-def version_docstring():
-    '''
-    Helper function for retrieving the docstring that should be written at the
-    top of the version file.
-    '''
-    return __configuration__["docstring"]
-
-
-def _discover_top_level_package(project_dir):
-    '''
-    Return the path to the top level package - that is, the first directory
-    under the project directory with an __init__.py file.
+    Search the tree starting at the current working directory for a file called
+    dynamic_versioning.ini.
     '''
     for root, _, files in os.walk(project_dir):
         for file in files:
-            if file == "__init__.py":
-                return root
+            if file.lower() == "dynamic_versioning.ini":
+                return pathlib.Path(root) / file
 
-    raise SystemExit("There does not appear to be a top-level package (containing an __init__.py file) in this or any "
-                     "sub-directory.")
+    # not found
+    return None
 
 
-def _find_setup_file():
+def load_config() -> Dict[str, Any] | None:
     '''
-    Seek out the setup file and return it as a Path.
+    Attempt to find a file called dynamic_versioning.ini in the current tree and
+    load the configuration. If not found, attempt to load configuration values
+    from the pyproject toml file.
     '''
-    for frame in inspect.stack():
-        if pathlib.Path(frame.filename).name == "setup.py":
-            return pathlib.Path(frame.filename).expanduser().resolve()
+    # search from the project dir
+    project_dir = pathlib.Path.cwd()
 
-    raise SystemExit("Unable to find the setup.py file!")
+    # search for a config file
+    if dv_config := _find_config_file(project_dir):
+        config = configparser.ConfigParser()
+        config.read(dv_config)
+        config_dict = {}
+        for section in config.sections():
+            if section == "dynamic_versioning":
+                for key, value in config.items(section):
+                    config_dict[key] = value
+        return config_dict
+
+    # load the pyproject.toml file
+    pyproject_toml = project_dir / "pyproject.toml"
+    if pyproject_toml.exists():
+        project_dict = toml.load(pyproject_toml)
+        if dv_section := project_dict.get("tool", {}).get("dynamic_versioning", {}):
+            return dv_section
+
+    # no configuration
+    return None
 
 
-def configure(top_level_pkg=None, version_file_name=None, version_docstring_format=None):
+# pylint: disable=unused-argument
+@deprecated(version="1.1.0",
+            reason="All configuration can be provided in dynamic_versioning.ini, pyproject.toml, and/or in the " \
+                   "environment")
+def configure(top_level_pkg=None,
+              version_file_name=None,
+              version_docstring_format=None) -> None:
     '''
     Accept the configuration values and set the global variables used to create
     the version file.
     '''
-    # if top-level directory is given populate that
-    if top_level_pkg is not None:
-        top_level_package = pathlib.Path(top_level_pkg).expanduser().resolve()
+    logging.warning("Dynamic Versioning no longer needs the configure function. Please see documentation on how to " \
+                    "use environment variables and/or and INI file (including pyproject.toml) for configuration.")
 
-    # otherwise, discover the top-level directory from the location of the
-    # setup.py file
-    else:
-        top_level_package = _discover_top_level_package(_find_setup_file().parent)
-
-    # assemble the version file
-    __configuration__["version_path"] = str(
-        (pathlib.Path(top_level_package) / (version_file_name or "version.py")).expanduser().resolve()
-    )
-
-    # if docstring provided, save it off
-    if version_docstring_format is not None:
-        __configuration__["docstring"] = version_docstring_format
+# pylint: enable=unused-argument

@@ -175,10 +175,11 @@ class GitDescribeError(DynamicVersioningError):
 
 def _git_describe(project_dir: pathlib.Path) -> str:
     '''
-    Perform a git describe --long and return the output.
+    Perform a git describe --long --tags and return the output.
+    The --tags option will get the non annotated git tags.
     '''
     # perform the git describe
-    command = ["git", "describe", "--long"]
+    command = ["git", "describe", "--long", "--tags"]
     with subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=project_dir) as proc:
         out, err = proc.communicate()
 
